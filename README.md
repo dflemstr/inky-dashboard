@@ -34,6 +34,8 @@ To install for your own user only:
 
 ```
 $ pipx install <path to inky-dashboard>
+-- OR --
+$ pipx install git+https://github.com/dflemstr/inky-dashboard
 $ source /home/dflemstr/.local/pipx/venvs/inky-dashboard/bin/activate
 $ playwright install
 ```
@@ -42,6 +44,8 @@ You can also install the tool globally (for all users) using this hack:
 
 ```
 $ sudo PIPX_HOME=/var/lib/pipx PIPX_BIN_DIR=/usr/local/bin pipx install <path to inky-dashboard>
+-- OR --
+$ sudo PIPX_HOME=/var/lib/pipx PIPX_BIN_DIR=/usr/local/bin pipx install git+https://github.com/dflemstr/inky-dashboard
 $ sudo -s
 # source /var/lib/pipx/venvs/inky-dashboard/bin/activate
 # playwright install
