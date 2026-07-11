@@ -91,6 +91,14 @@ def main():
         default=60.0,
         help="Maximum seconds to wait for --wait-selector before rendering anyway",
     )
+    parser.add_argument(
+        "--eval",
+        dest="eval_js",
+        default=None,
+        help="Run this JavaScript expression in the page once after it loads "
+        "(after --wait-selector), before the first render. Useful for tweaking "
+        "layout, e.g. hiding chrome. Wrap multi-statement code in an IIFE.",
+    )
     args = parser.parse_args()
     print(f"running with {vars(args)}", file=sys.stderr)
     asyncio.run(async_main(args))
@@ -126,6 +134,8 @@ async def async_main(args):
                     f"{args.wait_timeout}s; rendering anyway",
                     file=sys.stderr,
                 )
+        if args.eval_js:
+            await page.evaluate(args.eval_js)
         await asyncio.sleep(args.render_delay)
         # Do this after the page has fully rendered, since it might
         # do redirects or whatever during the render_delay
