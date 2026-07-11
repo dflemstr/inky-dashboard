@@ -60,6 +60,7 @@ Description=Inky Dashboard
 
 [Service]
 Type=exec
+Environment=UV_TOOL_DIR=/var/lib/uv/tools
 ExecStart=/usr/local/bin/inky-dashboard <add args here>
 Restart=on-failure
 
