@@ -7,6 +7,7 @@ import inky
 from inky.auto import auto
 from PIL import Image
 from playwright.async_api import Page, async_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 # Maps a friendly --type value to the concrete inky driver class. Boards without
 # an ID EEPROM can't be auto-detected, so the driver must be selected explicitly.
@@ -77,6 +78,19 @@ def main():
         default=20.0,
         help='Wait this many seconds for the webpage to "settle" (run JS etc) before first render',
     )
+    parser.add_argument(
+        "--wait-selector",
+        default=None,
+        help="Before rendering, wait until an element matching this CSS selector "
+        "appears (pierces open shadow DOM). E.g. 'ha-card' for Home Assistant. "
+        "This waits for real content instead of relying on --render-delay alone.",
+    )
+    parser.add_argument(
+        "--wait-timeout",
+        type=float,
+        default=60.0,
+        help="Maximum seconds to wait for --wait-selector before rendering anyway",
+    )
     args = parser.parse_args()
     print(f"running with {vars(args)}", file=sys.stderr)
     asyncio.run(async_main(args))
@@ -101,6 +115,17 @@ async def async_main(args):
         )
         page = await context.new_page()
         await page.goto(args.url)
+        if args.wait_selector:
+            try:
+                await page.wait_for_selector(
+                    args.wait_selector, timeout=args.wait_timeout * 1000
+                )
+            except PlaywrightTimeoutError:
+                print(
+                    f"warning: {args.wait_selector!r} did not appear within "
+                    f"{args.wait_timeout}s; rendering anyway",
+                    file=sys.stderr,
+                )
         await asyncio.sleep(args.render_delay)
         # Do this after the page has fully rendered, since it might
         # do redirects or whatever during the render_delay
