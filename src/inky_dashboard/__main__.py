@@ -4,9 +4,33 @@ import io
 import sys
 
 import inky
-from inky.auto import auto as Inky
+from inky.auto import auto
 from PIL import Image
 from playwright.async_api import Page, async_playwright
+
+# Maps a friendly --type value to the concrete inky driver class. Boards without
+# an ID EEPROM can't be auto-detected, so the driver must be selected explicitly.
+DISPLAY_TYPES = {
+    "phat": "InkyPHAT",
+    "phat-ssd1608": "InkyPHAT_SSD1608",
+    "what": "InkyWHAT",
+    "what-ssd1683": "InkyWHAT_SSD1683",
+    "impression-5.7": "Inky7Colour",
+    "impression-7.3": "Inky_Impressions_7",
+    "spectra-7.3": "InkyE673",
+    "spectra-13.3": "InkyEL133UF1",
+}
+
+
+def make_display(display_type, colour):
+    if display_type == "auto":
+        return auto()
+    cls = getattr(inky, DISPLAY_TYPES[display_type])
+    # colour is passed by keyword because the Impression/Spectra drivers take
+    # `resolution` as their first positional argument, unlike pHAT/wHAT.
+    if colour is not None:
+        return cls(colour=colour)
+    return cls()
 
 
 def main():
@@ -15,6 +39,23 @@ def main():
         description="Show a webpage on a Pimoroni inky-compatible E-Ink display",
     )
     parser.add_argument("url", help="URL of webpage to render")
+    parser.add_argument(
+        "-t",
+        "--type",
+        choices=["auto", *DISPLAY_TYPES],
+        default="auto",
+        help="Inky display model; 'auto' (default) reads the board EEPROM. Set "
+        "explicitly for boards without an EEPROM (e.g. some Impression panels).",
+    )
+    parser.add_argument(
+        "-c",
+        "--colour",
+        "--color",
+        dest="colour",
+        default=None,
+        help="Panel colour for pHAT/wHAT boards (e.g. black, red, yellow); "
+        "ignored by Impression/Spectra panels",
+    )
     parser.add_argument(
         "-s",
         "--scale",
@@ -42,7 +83,7 @@ def main():
 
 
 async def async_main(args):
-    display = Inky()
+    display = make_display(args.type, args.colour)
     width, height = display.resolution
 
     display.set_border(inky.WHITE)
