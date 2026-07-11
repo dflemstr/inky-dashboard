@@ -1,11 +1,12 @@
 import argparse
 import asyncio
+import io
 import sys
+
 import inky
 from inky.auto import auto as Inky
 from PIL import Image
-import tempfile
-from playwright.async_api import async_playwright
+from playwright.async_api import Page, async_playwright
 
 
 def main():
@@ -85,10 +86,8 @@ async def async_main(args):
             await asyncio.sleep(args.refresh_delay)
 
 
-async def render_frame(page, display, width, height):
-    with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
-        await page.screenshot(path=tmp.name)
-        srcimg = Image.open(tmp.name)
+async def render_frame(page: Page, display, width: int, height: int):
+    srcimg = Image.open(io.BytesIO(await page.screenshot()))
     img = Image.new(srcimg.mode, (width, height), (255, 255, 255))
     img.paste(srcimg, (0, 0))
     display.set_image(img)

@@ -14,47 +14,47 @@ if I ever end up needing that, though...
 
 ## Usage
 
-Run with poetry, like `poetry run inky-dashboard`.  You might need to install playwright
-browsers with `poetry run playwright install` the first time; this will download
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management and builds.
+
+Run with uv, like `uv run inky-dashboard`.  You will need to install the playwright
+browsers with `uv run playwright install` the first time; this will download
 self-contained headless browsers.
 
 The program takes command-line flags, use `-h` for more info.  The only mandatory argument
 is the URL to open, like so:
 
 ```
-$ inky-dashboard https://google.com
+$ uv run inky-dashboard https://google.com
 ```
 
 ## Installing
 
-I'd recommend using `pipx` for installation.  You will need to install playwright browsers
-in the relevant virtualenv that was created.
+Use `uv tool` to install the command onto your `PATH`.  You will need to install the
+playwright browsers afterwards.
 
 To install for your own user only:
 
 ```
-$ pipx install <path to inky-dashboard>
+$ uv tool install <path to inky-dashboard>
 -- OR --
-$ pipx install git+https://github.com/dflemstr/inky-dashboard
-$ source /home/dflemstr/.local/pipx/venvs/inky-dashboard/bin/activate
-$ playwright install
+$ uv tool install git+https://github.com/dflemstr/inky-dashboard
+$ uv tool run --from inky-dashboard playwright install
 ```
 
-You can also install the tool globally (for all users) using this hack:
+You can also install the tool globally (for all users) by pointing uv at a shared
+location:
 
 ```
-$ sudo PIPX_HOME=/var/lib/pipx PIPX_BIN_DIR=/usr/local/bin pipx install <path to inky-dashboard>
--- OR --
-$ sudo PIPX_HOME=/var/lib/pipx PIPX_BIN_DIR=/usr/local/bin pipx install git+https://github.com/dflemstr/inky-dashboard
-$ sudo -s
-# source /var/lib/pipx/venvs/inky-dashboard/bin/activate
-# playwright install
+$ sudo UV_TOOL_DIR=/var/lib/uv/tools UV_TOOL_BIN_DIR=/usr/local/bin \
+    uv tool install git+https://github.com/dflemstr/inky-dashboard
+$ sudo UV_TOOL_DIR=/var/lib/uv/tools \
+    uv tool run --from inky-dashboard playwright install
 ```
 
 This also lets you run the tool as a systemd-managed service:
 
 ```
-$ cat /etc/systemd/system/inky-dashboard.service 
+$ cat /etc/systemd/system/inky-dashboard.service
 [Unit]
 Description=Inky Dashboard
 
@@ -67,4 +67,20 @@ Restart=on-failure
 WantedBy=default.target
 
 $ sudo systemctl enable --now inky-dashboard.service
+```
+
+## Development
+
+Install the project with its dev dependencies and set up the browsers:
+
+```
+$ uv sync
+$ uv run playwright install
+```
+
+Lint and format with [ruff](https://docs.astral.sh/ruff/):
+
+```
+$ uv run ruff check
+$ uv run ruff format
 ```
