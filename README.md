@@ -40,6 +40,8 @@ Useful flags:
 - `--saturation` (Impression/Spectra panels) sets the color saturation used when quantizing
   to the panel's palette; higher is more vivid. Theme colors that match the resulting palette
   render without dithering.
+- `--locale` sets the browser locale (e.g. `en-GB`), which drives locale-aware formatting
+  such as 12h/24h clocks and date formats on pages that follow the browser locale.
 - `--eval` runs a JavaScript expression in the page once after it loads, e.g. to tweak the
   layout or hide chrome.
 

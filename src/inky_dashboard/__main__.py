@@ -101,6 +101,13 @@ def main():
         "higher is more saturated. Only used by Impression/Spectra panels.",
     )
     parser.add_argument(
+        "--locale",
+        default=None,
+        help="Browser locale (e.g. 'en-GB') for the page. Affects locale-aware "
+        "formatting such as 12h/24h clocks and date/number formats; e.g. a page "
+        "that follows the browser locale will render 24-hour times under 'en-GB'.",
+    )
+    parser.add_argument(
         "--eval",
         dest="eval_js",
         default=None,
@@ -129,6 +136,7 @@ async def async_main(args):
             color_scheme="light",
             is_mobile=False,
             device_scale_factor=args.scale,
+            locale=args.locale,
         )
         page = await context.new_page()
         await page.goto(args.url)
