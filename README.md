@@ -27,6 +27,33 @@ is the URL to open, like so:
 $ uv run inky-dashboard https://google.com
 ```
 
+Useful flags:
+
+- `-s, --scale` scales the page onto the panel; values below `1.0` "zoom out" so more
+  content fits (the viewport is enlarged and rendered down onto the display).
+- `-t, --type` selects the display driver explicitly (e.g. `impression-7.3`), for panels
+  without an ID EEPROM that `auto` detection can't identify. `-c, --colour` sets the
+  colour for pHAT/wHAT boards.
+- `--wait-selector` waits for a CSS selector to appear before rendering, instead of relying
+  on a fixed `--render-delay`. It pierces open shadow DOM, so `ha-card` works for Home
+  Assistant dashboards.
+- `--eval` runs a JavaScript expression in the page once after it loads, e.g. to tweak the
+  layout or hide chrome.
+
+### Example: a Home Assistant dashboard
+
+Home Assistant loads its cards asynchronously and reserves a left margin for the docked
+sidebar.  This waits for real content, hides the sidebar via HA's own sidebar-dock event,
+and scales the whole dashboard onto the panel:
+
+```
+$ inky-dashboard \
+    --wait-selector ha-card \
+    --eval "document.querySelector('home-assistant').dispatchEvent(new CustomEvent('hass-dock-sidebar',{detail:{dock:'always_hidden'},bubbles:true,composed:true}))" \
+    --scale 0.72 \
+    http://homeassistant.local/dashboard-inky/0
+```
+
 ## Installing
 
 Use `uv tool` to install the command onto your `PATH`.  You will need to install the
@@ -57,18 +84,24 @@ This also lets you run the tool as a systemd-managed service:
 $ cat /etc/systemd/system/inky-dashboard.service
 [Unit]
 Description=Inky Dashboard
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=exec
 Environment=UV_TOOL_DIR=/var/lib/uv/tools
-ExecStart=/usr/local/bin/inky-dashboard <add args here>
+ExecStart=/usr/local/bin/inky-dashboard --wait-selector ha-card --scale 0.72 http://homeassistant.local/dashboard-inky/0
 Restart=on-failure
+RestartSec=10
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 
 $ sudo systemctl enable --now inky-dashboard.service
 ```
+
+The `--eval` value contains spaces, so wrap it in double quotes in the unit file if you use
+it, otherwise systemd splits it into multiple arguments.
 
 ## Development
 
