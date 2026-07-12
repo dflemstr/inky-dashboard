@@ -152,7 +152,18 @@ async def async_main(args):
                     file=sys.stderr,
                 )
         if args.eval_js:
-            await page.evaluate(args.eval_js)
+            # Retry: right after load the target elements may not exist yet
+            # (e.g. an auth redirect still settling). A failing --eval must not
+            # crash the render loop, so treat a persistent failure as a warning.
+            for attempt in range(3):
+                try:
+                    await page.evaluate(args.eval_js)
+                    break
+                except Exception as e:
+                    if attempt == 2:
+                        print(f"warning: --eval failed: {e}", file=sys.stderr)
+                    else:
+                        await asyncio.sleep(2)
         await asyncio.sleep(args.render_delay)
         # Do this after the page has fully rendered, since it might
         # do redirects or whatever during the render_delay
