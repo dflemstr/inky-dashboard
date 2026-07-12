@@ -23,14 +23,15 @@ DISPLAY_TYPES = {
 }
 
 
-def make_display(display_type, colour):
+def make_display(display_type, color):
     if display_type == "auto":
         return auto()
     cls = getattr(inky, DISPLAY_TYPES[display_type])
-    # colour is passed by keyword because the Impression/Spectra drivers take
-    # `resolution` as their first positional argument, unlike pHAT/wHAT.
-    if colour is not None:
-        return cls(colour=colour)
+    # Passed by keyword because the Impression/Spectra drivers take `resolution`
+    # as their first positional argument, unlike pHAT/wHAT. The inky library's
+    # own parameter is spelled `colour`.
+    if color is not None:
+        return cls(colour=color)
     return cls()
 
 
@@ -50,11 +51,11 @@ def main():
     )
     parser.add_argument(
         "-c",
-        "--colour",
         "--color",
-        dest="colour",
+        "--colour",
+        dest="color",
         default=None,
-        help="Panel colour for pHAT/wHAT boards (e.g. black, red, yellow); "
+        help="Panel color for pHAT/wHAT boards (e.g. black, red, yellow); "
         "ignored by Impression/Spectra panels",
     )
     parser.add_argument(
@@ -105,7 +106,7 @@ def main():
 
 
 async def async_main(args):
-    display = make_display(args.type, args.colour)
+    display = make_display(args.type, args.color)
     width, height = display.resolution
 
     display.set_border(inky.WHITE)

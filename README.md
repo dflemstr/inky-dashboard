@@ -32,8 +32,8 @@ Useful flags:
 - `-s, --scale` scales the page onto the panel; values below `1.0` "zoom out" so more
   content fits (the viewport is enlarged and rendered down onto the display).
 - `-t, --type` selects the display driver explicitly (e.g. `impression-7.3`), for panels
-  without an ID EEPROM that `auto` detection can't identify. `-c, --colour` sets the
-  colour for pHAT/wHAT boards.
+  without an ID EEPROM that `auto` detection can't identify. `-c, --color` sets the
+  color for pHAT/wHAT boards.
 - `--wait-selector` waits for a CSS selector to appear before rendering, instead of relying
   on a fixed `--render-delay`. It pierces open shadow DOM, so `ha-card` works for Home
   Assistant dashboards.
