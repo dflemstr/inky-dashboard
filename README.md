@@ -37,6 +37,9 @@ Useful flags:
 - `--wait-selector` waits for a CSS selector to appear before rendering, instead of relying
   on a fixed `--render-delay`. It pierces open shadow DOM, so `ha-card` works for Home
   Assistant dashboards.
+- `--saturation` (Impression/Spectra panels) sets the color saturation used when quantizing
+  to the panel's palette; higher is more vivid. Theme colors that match the resulting palette
+  render without dithering.
 - `--eval` runs a JavaScript expression in the page once after it loads, e.g. to tweak the
   layout or hide chrome.
 

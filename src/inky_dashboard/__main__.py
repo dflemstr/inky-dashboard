@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import inspect
 import io
 import sys
 
@@ -93,6 +94,13 @@ def main():
         help="Maximum seconds to wait for --wait-selector before rendering anyway",
     )
     parser.add_argument(
+        "--saturation",
+        type=float,
+        default=0.5,
+        help="Color saturation (0.0-1.0) for the e-ink palette quantization; "
+        "higher is more saturated. Only used by Impression/Spectra panels.",
+    )
+    parser.add_argument(
         "--eval",
         dest="eval_js",
         default=None,
@@ -159,13 +167,18 @@ async def async_main(args):
         # TODO: make configurable
         await asyncio.sleep(0.5)
         while True:
-            await render_frame(page, display, width, height)
+            await render_frame(page, display, width, height, args.saturation)
             await asyncio.sleep(args.refresh_delay)
 
 
-async def render_frame(page: Page, display, width: int, height: int):
+async def render_frame(page: Page, display, width: int, height: int, saturation: float):
     srcimg = Image.open(io.BytesIO(await page.screenshot()))
     img = Image.new(srcimg.mode, (width, height), (255, 255, 255))
     img.paste(srcimg, (0, 0))
-    display.set_image(img)
+    # Only the Impression/Spectra drivers accept a saturation argument; pHAT/wHAT
+    # boards have a fixed palette and their set_image() takes no such keyword.
+    if "saturation" in inspect.signature(display.set_image).parameters:
+        display.set_image(img, saturation=saturation)
+    else:
+        display.set_image(img)
     display.show()
