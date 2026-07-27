@@ -69,6 +69,15 @@ def main():
         help="Scale the webpage by this factor",
     )
     parser.add_argument(
+        "--supersample",
+        type=float,
+        default=1.0,
+        help="Render at this multiple of the panel resolution and downscale "
+        "(Lanczos) for anti-aliasing. E.g. 2 renders at 2x then shrinks, giving "
+        "smooth text edges instead of the aliased edges you get at 1. Costs more "
+        "CPU/RAM per frame. When >1, font anti-aliasing is left enabled.",
+    )
+    parser.add_argument(
         "--poll-delay",
         type=float,
         default=2.0,
@@ -156,7 +165,10 @@ async def async_main(args):
             },
             color_scheme="light",
             is_mobile=False,
-            device_scale_factor=args.scale,
+            # Render at scale * supersample device pixels per CSS pixel; the
+            # layout still follows --scale (the viewport above is unchanged),
+            # while --supersample only increases pixel density for downscaling.
+            device_scale_factor=args.scale * args.supersample,
             locale=args.locale,
         )
         page = await context.new_page()
@@ -188,8 +200,8 @@ async def async_main(args):
         await asyncio.sleep(args.render_delay)
         # Do this after the page has fully rendered, since it might
         # do redirects or whatever during the render_delay
-        await page.add_style_tag(
-            content="""
+        # Freeze animations/transitions so screenshots are stable.
+        style = """
             *,
             *::before,
             *::after {
@@ -198,11 +210,22 @@ async def async_main(args):
                 animation: none !important;
                 caret-color: transparent !important;
                 transition: none !important;
-                font-smooth: never;
-                -webkit-font-smoothing : none;
             }
         """
-        )
+        # Disable font anti-aliasing ONLY when not supersampling: at 1x, AA
+        # produces gray edges the palette quantizer dithers into speckle, so
+        # hard (aliased) edges look cleaner. When supersampling we render dense
+        # with AA on and downscale, giving smooth edges — so keep AA there.
+        if args.supersample <= 1.0:
+            style += """
+            *,
+            *::before,
+            *::after {
+                font-smooth: never;
+                -webkit-font-smoothing: none;
+            }
+            """
+        await page.add_style_tag(content=style)
         # Small arbitrary wait to ensure CSS styles are applied after the above
         # TODO: make configurable
         await asyncio.sleep(0.5)
@@ -253,6 +276,10 @@ async def render_loop(page: Page, display, width: int, height: int, args):
 
 async def capture_frame(page: Page, width: int, height: int):
     srcimg = Image.open(io.BytesIO(await page.screenshot()))
+    # With --supersample the screenshot is larger than the panel; downscale it
+    # with a high-quality filter for anti-aliasing before quantizing.
+    if srcimg.size != (width, height):
+        srcimg = srcimg.resize((width, height), Image.LANCZOS)
     img = Image.new(srcimg.mode, (width, height), (255, 255, 255))
     img.paste(srcimg, (0, 0))
     return img

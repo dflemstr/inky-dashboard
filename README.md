@@ -34,6 +34,11 @@ Useful flags:
 
 - `-s, --scale` scales the page onto the panel; values below `1.0` "zoom out" so more
   content fits (the viewport is enlarged and rendered down onto the display).
+- `--supersample` renders at a multiple of the panel resolution and downscales (Lanczos)
+  for anti-aliasing. At `1` (default) text has hard, aliased edges (font smoothing is
+  disabled, since on a limited palette the quantizer would dither AA grays into speckle);
+  at e.g. `2` it renders 2x with smoothing on and shrinks, giving smoother edges at the
+  cost of more CPU/RAM per frame.
 - `-t, --type` selects the display driver explicitly (e.g. `impression-7.3`), for panels
   without an ID EEPROM that `auto` detection can't identify. `-c, --color` sets the
   color for pHAT/wHAT boards.
