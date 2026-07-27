@@ -8,9 +8,12 @@ The tool spawns a long-lived browser using the `playwright` library, and takes s
 at a regular interval to render to the display.  Hence, you can easily test your webpage
 in an ordinary browser before pointing this tool towards it.
 
-The tool will by default not ever refresh the page; it is assumed that the page will
-dynamically update, using for example Javascript or video.  I might implement refreshing
-if I ever end up needing that, though...
+The page is loaded once and left running, so it updates itself dynamically (via JavaScript,
+websockets, video, etc.).  The tool polls it frequently but only refreshes the panel when
+the rendered image has actually **changed** and has **settled** — see [Refreshing](#refreshing)
+below.  This matters because color E-Ink panels (Impression/Spectra) only support a single
+full-screen refresh that takes tens of seconds and flashes; there is no partial update, so
+redrawing only when something really changed avoids needless flashing and panel wear.
 
 ## Usage
 
@@ -44,6 +47,24 @@ Useful flags:
   such as 12h/24h clocks and date formats on pages that follow the browser locale.
 - `--eval` runs a JavaScript expression in the page once after it loads, e.g. to tweak the
   layout or hide chrome.
+- `--poll-delay`, `--settle-checks`, `--refresh-delay` control the refresh model
+  (see [Refreshing](#refreshing)).
+
+### Refreshing
+
+Color E-Ink panels have no partial-update mode: every refresh redraws the whole screen,
+takes tens of seconds, and flashes.  So instead of redrawing on a timer, the tool:
+
+1. screenshots the page every `--poll-delay` seconds (default `2`) and hashes the result;
+2. waits until the image stops changing — identical across `--settle-checks` consecutive
+   polls (default `2`) — so it never captures a mid-transition frame (animations, values
+   ticking over, a chart re-drawing);
+3. refreshes the panel only when a *settled* image differs from what is already displayed.
+
+A static page is therefore never redrawn.  `--refresh-delay` (default `300`) is an upper
+bound on staleness: if the page changes continuously and never settles, the panel is
+refreshed anyway after that many seconds so it can't get arbitrarily out of date.  (The
+panel's own multi-second refresh naturally rate-limits how often it can redraw.)
 
 ### Example: a Home Assistant dashboard
 

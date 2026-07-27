@@ -1,8 +1,10 @@
 import argparse
 import asyncio
+import hashlib
 import inspect
 import io
 import sys
+import time
 
 import inky
 from inky.auto import auto
@@ -67,11 +69,30 @@ def main():
         help="Scale the webpage by this factor",
     )
     parser.add_argument(
+        "--poll-delay",
+        type=float,
+        default=2.0,
+        help="How often (seconds) to screenshot the page and check for changes. "
+        "The panel is only physically refreshed when the image actually changes "
+        "and has settled (see --settle-checks), so this can be short.",
+    )
+    parser.add_argument(
+        "--settle-checks",
+        type=int,
+        default=2,
+        help="Require the rendered image to be identical across this many "
+        "consecutive polls before refreshing the panel. Debounces mid-transition "
+        "frames (animations, values ticking) so the slow e-ink refresh only fires "
+        "once the page has stopped changing.",
+    )
+    parser.add_argument(
         "-w",
         "--refresh-delay",
         type=float,
-        default=60.0,
-        help="Wait this many seconds before starting to refresh the page again",
+        default=300.0,
+        help="Upper bound (seconds) on panel staleness: if the image differs from "
+        "what is on the panel but never settles, force a refresh after this long. "
+        "Bounds latency for pages that change continuously.",
     )
     parser.add_argument(
         "-r",
@@ -185,15 +206,54 @@ async def async_main(args):
         # Small arbitrary wait to ensure CSS styles are applied after the above
         # TODO: make configurable
         await asyncio.sleep(0.5)
-        while True:
-            await render_frame(page, display, width, height, args.saturation)
-            await asyncio.sleep(args.refresh_delay)
+        await render_loop(page, display, width, height, args)
 
 
-async def render_frame(page: Page, display, width: int, height: int, saturation: float):
+async def render_loop(page: Page, display, width: int, height: int, args):
+    # The Impression/Spectra panels only support a full, ~30s flashing refresh —
+    # there is no partial/damage-region update — so every refresh is expensive and
+    # wears the panel. Rather than redraw on a fixed timer, poll the page often and
+    # only refresh when the rendered image has actually changed AND settled (stopped
+    # changing for --settle-checks polls). This skips mid-transition frames and
+    # never redraws a static page. --refresh-delay caps how stale the panel may get
+    # if the page changes continuously and never settles.
+    panel_sig = None  # signature of the image currently on the panel
+    prev_sig = None  # signature seen on the previous poll
+    stable = 0  # consecutive polls with an unchanged image
+    pending_since = None  # when the current (un-pushed) change first appeared
+    while True:
+        img = await capture_frame(page, width, height)
+        sig = hashlib.sha256(img.tobytes()).digest()
+        stable = stable + 1 if sig == prev_sig else 1
+        prev_sig = sig
+
+        if sig != panel_sig:
+            if pending_since is None:
+                pending_since = time.monotonic()
+            settled = stable >= args.settle_checks
+            forced = (time.monotonic() - pending_since) >= args.refresh_delay
+            if settled or forced:
+                print(
+                    f"refreshing panel ({'settled' if settled else 'forced'})",
+                    file=sys.stderr,
+                )
+                push_frame(display, img, args.saturation)
+                panel_sig = sig
+                pending_since = None
+        else:
+            pending_since = None
+
+        await asyncio.sleep(args.poll_delay)
+
+
+async def capture_frame(page: Page, width: int, height: int):
     srcimg = Image.open(io.BytesIO(await page.screenshot()))
     img = Image.new(srcimg.mode, (width, height), (255, 255, 255))
     img.paste(srcimg, (0, 0))
+    return img
+
+
+def push_frame(display, img, saturation: float):
     # Only the Impression/Spectra drivers accept a saturation argument; pHAT/wHAT
     # boards have a fixed palette and their set_image() takes no such keyword.
     if "saturation" in inspect.signature(display.set_image).parameters:
