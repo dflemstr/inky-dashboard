@@ -145,6 +145,15 @@ def main():
         "(after --wait-selector), before the first render. Useful for tweaking "
         "layout, e.g. hiding chrome. Wrap multi-statement code in an IIFE.",
     )
+    parser.add_argument(
+        "--inject-css",
+        default=None,
+        help="Path to a CSS file whose contents are injected into the page after "
+        "load. Handy for a self-contained @font-face (data: URI) plus the "
+        "font-family CSS variables a framework reads (e.g. Home Assistant's "
+        "--ha-font-family-*), which cascade into shadow DOM where a plain "
+        "'* { font-family }' rule cannot reach.",
+    )
     args = parser.parse_args()
     print(f"running with {vars(args)}", file=sys.stderr)
     asyncio.run(async_main(args))
@@ -226,6 +235,13 @@ async def async_main(args):
             }
             """
         await page.add_style_tag(content=style)
+        # Inject user CSS last so it can override the page (e.g. swap the font).
+        if args.inject_css:
+            try:
+                with open(args.inject_css) as f:
+                    await page.add_style_tag(content=f.read())
+            except OSError as e:
+                print(f"warning: --inject-css failed: {e}", file=sys.stderr)
         # Small arbitrary wait to ensure CSS styles are applied after the above
         # TODO: make configurable
         await asyncio.sleep(0.5)
