@@ -104,6 +104,16 @@ def main():
         "Bounds latency for pages that change continuously.",
     )
     parser.add_argument(
+        "--min-refresh-interval",
+        type=float,
+        default=0.0,
+        help="Minimum seconds between physical panel refreshes. A settled change "
+        "that arrives sooner is held until this interval elapses, then the latest "
+        "state is drawn. Coalesces frequently-changing content (e.g. live power "
+        "readings) into fewer refreshes. Should be <= --refresh-delay. Default 0 "
+        "(refresh as soon as a change settles).",
+    )
+    parser.add_argument(
         "-r",
         "--render-delay",
         type=float,
@@ -255,7 +265,9 @@ async def render_loop(page: Page, display, width: int, height: int, args):
     # only refresh when the rendered image has actually changed AND settled (stopped
     # changing for --settle-checks polls). This skips mid-transition frames and
     # never redraws a static page. --refresh-delay caps how stale the panel may get
-    # if the page changes continuously and never settles.
+    # if the page changes continuously and never settles, and --min-refresh-interval
+    # sets a floor so frequently-changing content can't trigger back-to-back
+    # refreshes.
     #
     # Every refresh is gated on the settled image differing from what is currently
     # on the panel (`sig != panel_sig`), so a burst of changes that ends up back on
@@ -265,18 +277,24 @@ async def render_loop(page: Page, display, width: int, height: int, args):
     prev_sig = None  # signature seen on the previous poll
     stable = 0  # consecutive polls with an unchanged image
     pending_since = None  # when the current (un-pushed) change first appeared
+    last_refresh = None  # when the last physical refresh finished
     while True:
         img = await capture_frame(page, width, height)
         sig = hashlib.sha256(img.tobytes()).digest()
         stable = stable + 1 if sig == prev_sig else 1
         prev_sig = sig
+        now = time.monotonic()
 
         if sig != panel_sig:
             if pending_since is None:
-                pending_since = time.monotonic()
+                pending_since = now
             settled = stable >= args.settle_checks
-            forced = (time.monotonic() - pending_since) >= args.refresh_delay
-            if settled or forced:
+            forced = (now - pending_since) >= args.refresh_delay
+            rate_ok = (
+                last_refresh is None
+                or (now - last_refresh) >= args.min_refresh_interval
+            )
+            if (settled or forced) and rate_ok:
                 print(
                     f"refreshing panel ({'settled' if settled else 'forced'})",
                     file=sys.stderr,
@@ -284,6 +302,7 @@ async def render_loop(page: Page, display, width: int, height: int, args):
                 push_frame(display, img, args.saturation)
                 panel_sig = sig
                 pending_since = None
+                last_refresh = time.monotonic()
         else:
             pending_since = None
 

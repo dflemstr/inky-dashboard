@@ -68,8 +68,13 @@ takes tens of seconds, and flashes.  So instead of redrawing on a timer, the too
 
 A static page is therefore never redrawn.  `--refresh-delay` (default `300`) is an upper
 bound on staleness: if the page changes continuously and never settles, the panel is
-refreshed anyway after that many seconds so it can't get arbitrarily out of date.  (The
-panel's own multi-second refresh naturally rate-limits how often it can redraw.)
+refreshed anyway after that many seconds so it can't get arbitrarily out of date.
+
+`--min-refresh-interval` (default `0`) sets a lower bound — a floor between physical
+refreshes.  A settled change that arrives sooner is held until the interval elapses, then
+the latest state is drawn.  This coalesces frequently-changing content (a live power
+reading, say) into fewer refreshes instead of redrawing every few seconds.  (The panel's
+own multi-second refresh already rate-limits somewhat; this extends that deliberately.)
 
 ### Example: a Home Assistant dashboard
 
