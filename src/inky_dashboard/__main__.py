@@ -217,6 +217,11 @@ async def render_loop(page: Page, display, width: int, height: int, args):
     # changing for --settle-checks polls). This skips mid-transition frames and
     # never redraws a static page. --refresh-delay caps how stale the panel may get
     # if the page changes continuously and never settles.
+    #
+    # Every refresh is gated on the settled image differing from what is currently
+    # on the panel (`sig != panel_sig`), so a burst of changes that ends up back on
+    # the already-displayed image triggers no refresh at all — the churn just lands
+    # in the `else` branch below and nothing is pushed.
     panel_sig = None  # signature of the image currently on the panel
     prev_sig = None  # signature seen on the previous poll
     stable = 0  # consecutive polls with an unchanged image
