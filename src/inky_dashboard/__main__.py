@@ -9,8 +9,16 @@ import time
 import inky
 from inky.auto import auto
 from PIL import Image
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, async_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+# How many times load_and_prepare retries the initial navigation before giving
+# up. A transient network error (a wifi re-associate mid-load raises
+# net::ERR_NETWORK_CHANGED, HA still starting) should be ridden out rather than
+# crash the service, especially at startup where there is no render loop to
+# recover it yet.
+GOTO_RETRIES = 3
 
 # Maps a friendly --type value to the concrete inky driver class. Boards without
 # an ID EEPROM can't be auto-detected, so the driver must be selected explicitly.
@@ -225,7 +233,18 @@ async def load_and_prepare(page: Page, args):
     # runs once at startup and again whenever the render loop reloads to recover
     # a lost connection, so the sidebar-dock/eval and injected styles are always
     # re-applied after a reload (they live on the document, which a reload wipes).
-    await page.goto(args.url)
+    for attempt in range(1, GOTO_RETRIES + 1):
+        try:
+            await page.goto(args.url)
+            break
+        except PlaywrightError as e:
+            if attempt == GOTO_RETRIES:
+                raise
+            print(
+                f"warning: navigation failed ({e}); retrying ({attempt})",
+                file=sys.stderr,
+            )
+            await asyncio.sleep(min(2 * attempt, 10))
     if args.wait_selector:
         try:
             await page.wait_for_selector(
