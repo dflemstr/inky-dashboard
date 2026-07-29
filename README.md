@@ -76,6 +76,17 @@ the latest state is drawn.  This coalesces frequently-changing content (a live p
 reading, say) into fewer refreshes instead of redrawing every few seconds.  (The panel's
 own multi-second refresh already rate-limits somewhat; this extends that deliberately.)
 
+### Riding out connection blips
+
+A transient outage (the backend restarting, a wifi stall) should not paint a broken page.
+When the source page can't be captured — a screenshot times out, or (for Home Assistant)
+the frontend reports its websocket down — the tool **holds the last good frame** on the
+panel rather than refreshing to a "Connection lost" popover or default chrome, and it does
+not crash.  After `--reload-after` such polls in a row (default `3`) it reloads the page to
+recover a wedged connection, re-applying `--eval` and injected styles.  Because the panel
+keeps its last image with no power, the dashboard simply stays put until real content is
+back.
+
 ### Example: a Home Assistant dashboard
 
 Home Assistant loads its cards asynchronously and reserves a left margin for the docked

@@ -25,6 +25,21 @@ DISPLAY_TYPES = {
     "spectra-13.3": "InkyEL133UF1",
 }
 
+# JS probe: is Home Assistant's websocket currently connected? Returns True or
+# False when it can be determined, or None if not (page still loading, or not a
+# HA page at all). Used to avoid painting HA's "Connection lost. Reconnecting..."
+# popover (and the default chrome it falls back to) onto the panel: while the
+# socket is down we hold the last good frame instead of refreshing to a broken
+# one. `hass.connection` is home-assistant-js-websocket's Connection, whose
+# `connected` getter flips to false the moment the socket drops.
+HA_CONNECTED_PROBE = """(() => {
+  try {
+    const ha = document.querySelector('home-assistant');
+    const c = ha && ha.hass && ha.hass.connection;
+    return c ? !!c.connected : null;
+  } catch (e) { return null; }
+})()"""
+
 
 def make_display(display_type, color):
     if display_type == "auto":
@@ -114,6 +129,15 @@ def main():
         "(refresh as soon as a change settles).",
     )
     parser.add_argument(
+        "--reload-after",
+        type=int,
+        default=3,
+        help="After this many consecutive unusable polls (Home Assistant's socket "
+        "reported down, or a screenshot timing out), reload the page to recover a "
+        "wedged connection. Until then the last good frame is held on the panel so "
+        "a transient outage never paints the reconnect popover. Default 3.",
+    )
+    parser.add_argument(
         "-r",
         "--render-delay",
         type=float,
@@ -191,71 +215,80 @@ async def async_main(args):
             locale=args.locale,
         )
         page = await context.new_page()
-        await page.goto(args.url)
-        if args.wait_selector:
-            try:
-                await page.wait_for_selector(
-                    args.wait_selector, timeout=args.wait_timeout * 1000
-                )
-            except PlaywrightTimeoutError:
-                print(
-                    f"warning: {args.wait_selector!r} did not appear within "
-                    f"{args.wait_timeout}s; rendering anyway",
-                    file=sys.stderr,
-                )
-        if args.eval_js:
-            # Retry: right after load the target elements may not exist yet
-            # (e.g. an auth redirect still settling). A failing --eval must not
-            # crash the render loop, so treat a persistent failure as a warning.
-            for attempt in range(3):
-                try:
-                    await page.evaluate(args.eval_js)
-                    break
-                except Exception as e:
-                    if attempt == 2:
-                        print(f"warning: --eval failed: {e}", file=sys.stderr)
-                    else:
-                        await asyncio.sleep(2)
-        await asyncio.sleep(args.render_delay)
-        # Do this after the page has fully rendered, since it might
-        # do redirects or whatever during the render_delay
-        # Freeze animations/transitions so screenshots are stable.
-        style = """
-            *,
-            *::before,
-            *::after {
-                -moz-animation: none !important;
-                -moz-transition: none !important;
-                animation: none !important;
-                caret-color: transparent !important;
-                transition: none !important;
-            }
-        """
-        # Disable font anti-aliasing ONLY when not supersampling: at 1x, AA
-        # produces gray edges the palette quantizer dithers into speckle, so
-        # hard (aliased) edges look cleaner. When supersampling we render dense
-        # with AA on and downscale, giving smooth edges — so keep AA there.
-        if args.supersample <= 1.0:
-            style += """
-            *,
-            *::before,
-            *::after {
-                font-smooth: never;
-                -webkit-font-smoothing: none;
-            }
-            """
-        await page.add_style_tag(content=style)
-        # Inject user CSS last so it can override the page (e.g. swap the font).
-        if args.inject_css:
-            try:
-                with open(args.inject_css) as f:
-                    await page.add_style_tag(content=f.read())
-            except OSError as e:
-                print(f"warning: --inject-css failed: {e}", file=sys.stderr)
-        # Small arbitrary wait to ensure CSS styles are applied after the above
-        # TODO: make configurable
-        await asyncio.sleep(0.5)
+        await load_and_prepare(page, args)
         await render_loop(page, display, width, height, args)
+
+
+async def load_and_prepare(page: Page, args):
+    # Navigate to the target URL and (re-)apply all render-time setup: wait for
+    # real content, run --eval, freeze animations, disable AA, inject CSS. This
+    # runs once at startup and again whenever the render loop reloads to recover
+    # a lost connection, so the sidebar-dock/eval and injected styles are always
+    # re-applied after a reload (they live on the document, which a reload wipes).
+    await page.goto(args.url)
+    if args.wait_selector:
+        try:
+            await page.wait_for_selector(
+                args.wait_selector, timeout=args.wait_timeout * 1000
+            )
+        except PlaywrightTimeoutError:
+            print(
+                f"warning: {args.wait_selector!r} did not appear within "
+                f"{args.wait_timeout}s; rendering anyway",
+                file=sys.stderr,
+            )
+    if args.eval_js:
+        # Retry: right after load the target elements may not exist yet
+        # (e.g. an auth redirect still settling). A failing --eval must not
+        # crash the render loop, so treat a persistent failure as a warning.
+        for attempt in range(3):
+            try:
+                await page.evaluate(args.eval_js)
+                break
+            except Exception as e:
+                if attempt == 2:
+                    print(f"warning: --eval failed: {e}", file=sys.stderr)
+                else:
+                    await asyncio.sleep(2)
+    await asyncio.sleep(args.render_delay)
+    # Do this after the page has fully rendered, since it might
+    # do redirects or whatever during the render_delay
+    # Freeze animations/transitions so screenshots are stable.
+    style = """
+        *,
+        *::before,
+        *::after {
+            -moz-animation: none !important;
+            -moz-transition: none !important;
+            animation: none !important;
+            caret-color: transparent !important;
+            transition: none !important;
+        }
+    """
+    # Disable font anti-aliasing ONLY when not supersampling: at 1x, AA
+    # produces gray edges the palette quantizer dithers into speckle, so
+    # hard (aliased) edges look cleaner. When supersampling we render dense
+    # with AA on and downscale, giving smooth edges — so keep AA there.
+    if args.supersample <= 1.0:
+        style += """
+        *,
+        *::before,
+        *::after {
+            font-smooth: never;
+            -webkit-font-smoothing: none;
+        }
+        """
+    await page.add_style_tag(content=style)
+    # Inject user CSS last so it can override the page (e.g. swap the font).
+    if args.inject_css:
+        try:
+            with open(args.inject_css) as f:
+                await page.add_style_tag(content=f.read())
+        except OSError as e:
+            print(f"warning: --inject-css failed: {e}", file=sys.stderr)
+    # Small arbitrary wait to ensure CSS styles are applied after the above
+    # TODO: make configurable
+    await asyncio.sleep(0.5)
 
 
 async def render_loop(page: Page, display, width: int, height: int, args):
@@ -273,13 +306,56 @@ async def render_loop(page: Page, display, width: int, height: int, args):
     # on the panel (`sig != panel_sig`), so a burst of changes that ends up back on
     # the already-displayed image triggers no refresh at all — the churn just lands
     # in the `else` branch below and nothing is pushed.
+    #
+    # Resilience: a poll is "unusable" when Home Assistant reports its socket down
+    # or a screenshot times out (e.g. a wifi blip stalls the transfer). Those polls
+    # do NOT push and do NOT crash — the last good frame stays on the panel so the
+    # "Connection lost" popover / default chrome never lands on e-ink. After
+    # --reload-after such polls in a row, the page is reloaded to recover.
     panel_sig = None  # signature of the image currently on the panel
     prev_sig = None  # signature seen on the previous poll
     stable = 0  # consecutive polls with an unchanged image
     pending_since = None  # when the current (un-pushed) change first appeared
     last_refresh = None  # when the last physical refresh finished
+    fails = 0  # consecutive unusable polls (disconnected / capture error)
     while True:
-        img = await capture_frame(page, width, height)
+        # Hold the last good frame while HA explicitly reports its socket down,
+        # so the reconnect popover is never captured. `None` (can't tell) falls
+        # through to a normal capture — only an explicit False gates.
+        try:
+            connected = await page.evaluate(HA_CONNECTED_PROBE)
+        except Exception:
+            connected = None
+
+        img = None
+        if connected is False:
+            print(
+                f"HA connection down; holding last frame ({fails + 1})",
+                file=sys.stderr,
+            )
+        else:
+            try:
+                img = await capture_frame(page, width, height)
+            except PlaywrightTimeoutError:
+                print(
+                    f"screenshot timed out; holding last frame ({fails + 1})",
+                    file=sys.stderr,
+                )
+
+        if img is None:
+            # Unusable poll: recover by reloading once we've seen enough in a row.
+            fails += 1
+            if fails >= args.reload_after:
+                print("reloading page to recover", file=sys.stderr)
+                try:
+                    await load_and_prepare(page, args)
+                except Exception as e:
+                    print(f"warning: reload failed: {e}", file=sys.stderr)
+                fails = 0
+            await asyncio.sleep(args.poll_delay)
+            continue
+        fails = 0
+
         sig = hashlib.sha256(img.tobytes()).digest()
         stable = stable + 1 if sig == prev_sig else 1
         prev_sig = sig
