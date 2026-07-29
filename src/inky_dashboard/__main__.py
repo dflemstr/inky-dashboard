@@ -326,11 +326,13 @@ async def render_loop(page: Page, display, width: int, height: int, args):
     # the already-displayed image triggers no refresh at all — the churn just lands
     # in the `else` branch below and nothing is pushed.
     #
-    # Resilience: a poll is "unusable" when Home Assistant reports its socket down
-    # or a screenshot times out (e.g. a wifi blip stalls the transfer). Those polls
-    # do NOT push and do NOT crash — the last good frame stays on the panel so the
-    # "Connection lost" popover / default chrome never lands on e-ink. After
-    # --reload-after such polls in a row, the page is reloaded to recover.
+    # Resilience: a poll is "unusable" when the page isn't showing real content
+    # (--wait-selector absent), Home Assistant reports its socket down, or a
+    # screenshot times out (e.g. a wifi blip stalls the transfer). Those polls do
+    # NOT push and do NOT crash — the last good frame stays on the panel so a
+    # half-loaded page, the "Connection lost" popover, or default chrome never
+    # lands on e-ink. After --reload-after such polls in a row, the page is
+    # reloaded to recover.
     panel_sig = None  # signature of the image currently on the panel
     prev_sig = None  # signature seen on the previous poll
     stable = 0  # consecutive polls with an unchanged image
@@ -338,16 +340,36 @@ async def render_loop(page: Page, display, width: int, height: int, args):
     last_refresh = None  # when the last physical refresh finished
     fails = 0  # consecutive unusable polls (disconnected / capture error)
     while True:
-        # Hold the last good frame while HA explicitly reports its socket down,
-        # so the reconnect popover is never captured. `None` (can't tell) falls
-        # through to a normal capture — only an explicit False gates.
+        # Is the page healthy enough to capture? Two gates, either of which means
+        # "hold the last good frame" rather than paint a broken page onto e-ink:
+        #  - a --wait-selector, if given, must currently be present, i.e. real
+        #    content is loaded and it isn't a blank / error / still-loading page.
+        #    query_selector pierces open shadow DOM, so 'ha-card' matches HA cards
+        #    even when a "Connection lost" load left the frontend element missing.
+        #  - HA's websocket, if this is a HA page, must not report itself down
+        #    (that's the "Connection lost. Reconnecting..." popover state, where
+        #    the cards are still in the DOM so the selector check alone passes).
+        content_ok = True
+        if args.wait_selector:
+            try:
+                handle = await page.query_selector(args.wait_selector)
+            except Exception:
+                handle = None
+            content_ok = handle is not None
+            if handle is not None:
+                await handle.dispose()
         try:
             connected = await page.evaluate(HA_CONNECTED_PROBE)
         except Exception:
             connected = None
 
         img = None
-        if connected is False:
+        if not content_ok:
+            print(
+                f"{args.wait_selector!r} not present; holding last frame ({fails + 1})",
+                file=sys.stderr,
+            )
+        elif connected is False:
             print(
                 f"HA connection down; holding last frame ({fails + 1})",
                 file=sys.stderr,
