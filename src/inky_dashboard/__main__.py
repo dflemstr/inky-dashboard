@@ -62,6 +62,13 @@ def make_display(display_type, color):
 
 
 def main():
+    # Line-buffer stdout/stderr so each log line is flushed immediately. When the
+    # process runs under systemd or over an ssh pipe (not a TTY), Python defaults
+    # to block buffering, which withholds/delays log lines in the journal and made
+    # live diagnostics misleading. Line buffering keeps the journal current.
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+
     parser = argparse.ArgumentParser(
         prog="inky-dashboard",
         description="Show a webpage on a Pimoroni inky-compatible E-Ink display",
