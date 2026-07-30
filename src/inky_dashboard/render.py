@@ -218,5 +218,14 @@ async def run_render(args, publish, width: int, height: int):
             locale=args.locale,
         )
         page = await context.new_page()
+        # Injected before any page script on every navigation — used to seed auth
+        # (e.g. Home Assistant's localStorage token) so the app starts logged in
+        # without a trusted-network or a login redirect.
+        if getattr(args, "init_script", None):
+            try:
+                with open(args.init_script) as f:
+                    await page.add_init_script(content=f.read())
+            except OSError as e:
+                print(f"warning: --init-script failed: {e}", file=sys.stderr)
         await load_and_prepare(page, args)
         await render_loop(page, publish, width, height, args)

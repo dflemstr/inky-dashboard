@@ -38,6 +38,29 @@ def main():
         cmd += ["--eval", opt["eval"]]
     if opt.get("locale"):
         cmd += ["--locale", opt["locale"]]
+
+    # If a long-lived access token is configured, seed it into the frontend's
+    # localStorage before the app loads so it starts authenticated (no trusted
+    # network, no login redirect). hassUrl is derived from the page's own origin
+    # so it always matches the instance being rendered.
+    token = opt.get("token", "").strip()
+    if token:
+        init_js = (
+            "(function(){try{"
+            "localStorage.setItem('hassTokens', JSON.stringify({"
+            "access_token: " + json.dumps(token) + ","
+            "token_type: 'Bearer',"
+            "expires_in: 315360000,"
+            "hassUrl: location.protocol + '//' + location.host,"
+            "clientId: null,"
+            "expires: 9999999999999,"
+            "refresh_token: ''"
+            "}));}catch(e){}})();"
+        )
+        with open("/tmp/init.js", "w") as f:
+            f.write(init_js)
+        cmd += ["--init-script", "/tmp/init.js"]
+
     if opt.get("extra_args"):
         cmd += shlex.split(opt["extra_args"])
 

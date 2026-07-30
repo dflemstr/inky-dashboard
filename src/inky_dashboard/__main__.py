@@ -83,6 +83,13 @@ def _add_render_args(p):
         default=None,
         help="Path to a CSS file injected into the page after load.",
     )
+    p.add_argument(
+        "--init-script",
+        default=None,
+        help="Path to a JavaScript file injected BEFORE any page script on every "
+        "navigation (e.g. to seed a Home Assistant auth token into localStorage "
+        "so the app starts logged in without a login redirect).",
+    )
 
 
 def _add_panel_args(p):

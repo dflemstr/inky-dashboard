@@ -19,6 +19,7 @@ ports_description:
 # Renders over the internal `homeassistant` hostname; no host mounts needed.
 options:
   url: "http://homeassistant/dashboard-inky/0"
+  token: ""
   width: 1600
   height: 1200
   scale: 1.44
@@ -29,6 +30,7 @@ options:
   extra_args: ""
 schema:
   url: str
+  token: password?
   width: int
   height: int
   scale: float
