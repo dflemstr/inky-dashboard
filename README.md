@@ -4,33 +4,54 @@ A simple tool for rendering web pages to E-Ink® displays that are supported by 
 [inky](https://github.com/pimoroni/inky) library.  More than likely you would run this
 on a Raspberry Pi.
 
-The tool spawns a long-lived browser using the `playwright` library, and takes screenshots
-at a regular interval to render to the display.  Hence, you can easily test your webpage
-in an ordinary browser before pointing this tool towards it.
-
-The page is loaded once and left running, so it updates itself dynamically (via JavaScript,
-websockets, video, etc.).  The tool polls it frequently but only refreshes the panel when
-the rendered image has actually **changed** and has **settled** — see [Refreshing](#refreshing)
-below.  This matters because color E-Ink panels (Impression/Spectra) only support a single
+It spawns a long-lived browser using the `playwright` library and takes screenshots at a
+regular interval.  The page is loaded once and left running, so it updates itself
+dynamically (via JavaScript, websockets, video, etc.).  The image is only redrawn on the
+panel when it has actually **changed** and has **settled** — see [Refreshing](#refreshing).
+This matters because color E-Ink panels (Impression/Spectra) only support a single
 full-screen refresh that takes tens of seconds and flashes; there is no partial update, so
 redrawing only when something really changed avoids needless flashing and panel wear.
+
+## Modes
+
+Rendering a modern web page needs a real browser, which is heavy for a small Pi (a Pi Zero
+can barely fit one Chromium).  So the tool can **split rendering from display** across two
+hosts, or do both on one:
+
+- **`local`** — render *and* draw on the same host (the classic single-box setup).
+  Needs the browser and the Inky. `pip install inky-dashboard[local]`.
+- **`serve`** — run the browser on a capable host (a NAS, your Home Assistant server, …),
+  render + settle, and serve the finished panel image over HTTP.  No Inky needed.
+  `pip install inky-dashboard[serve]`.
+- **`display`** — run on the Raspberry Pi: fetch the image from a `serve` instance and push
+  it to the panel.  **No browser** — a tiny footprint, so even a Pi Zero is comfortable.
+  `pip install inky-dashboard[display]`.
+
+The `serve`/`display` split is the recommended setup for constrained panels: the browser's
+memory pressure moves off the Pi entirely, and (when the render host also hosts the page,
+e.g. Home Assistant) rendering happens over localhost, so it's fast and never hits flaky
+Wi-Fi.
 
 ## Usage
 
 This project uses [uv](https://docs.astral.sh/uv/) for dependency management and builds.
-
-Run with uv, like `uv run inky-dashboard`.  You will need to install the playwright
-browsers with `uv run playwright install` the first time; this will download
-self-contained headless browsers.
-
-The program takes command-line flags, use `-h` for more info.  The only mandatory argument
-is the URL to open, like so:
+Install the playwright browsers once on any host that renders (`local`/`serve`) with
+`uv run playwright install`.
 
 ```
-$ uv run inky-dashboard https://google.com
+# all-in-one on one host:
+$ inky-dashboard local https://google.com
+
+# split across two hosts:
+$ inky-dashboard serve   https://google.com --width 1600 --height 1200   # on the render host
+$ inky-dashboard display http://render-host:8080                         # on the Pi
 ```
 
-Useful flags:
+`serve` exposes `GET /image` (the current PNG, with an `ETag`) and `GET /hash`; the
+`display` client polls `/hash` and only fetches `/image` when it changes.
+
+Useful flags (`local`/`serve` share the render flags; `local`/`display` share the panel
+flags):
 
 - `-s, --scale` scales the page onto the panel; values below `1.0` "zoom out" so more
   content fits (the viewport is enlarged and rendered down onto the display).
@@ -91,15 +112,23 @@ back.
 
 Home Assistant loads its cards asynchronously and reserves a left margin for the docked
 sidebar.  This waits for real content, hides the sidebar via HA's own sidebar-dock event,
-and scales the whole dashboard onto the panel:
+and scales the whole dashboard onto the panel.  Rendering on the HA host itself is ideal —
+the page loads over localhost, so it's fast and immune to Wi-Fi stalls:
 
 ```
-$ inky-dashboard \
+# on the render host (e.g. the Home Assistant server):
+$ inky-dashboard serve \
+    --width 1600 --height 1200 --scale 1.44 \
     --wait-selector ha-card \
     --eval "document.querySelector('home-assistant').dispatchEvent(new CustomEvent('hass-dock-sidebar',{detail:{dock:'always_hidden'},bubbles:true,composed:true}))" \
-    --scale 0.72 \
-    http://homeassistant.local/dashboard-inky/0
+    http://localhost:8123/dashboard-inky/0
+
+# on the Raspberry Pi driving the panel:
+$ inky-dashboard display http://homeassistant.local:8080 --saturation 0.0
 ```
+
+To do everything on one box instead, swap `serve …` for `local …` (and drop the
+`display` command).
 
 ## Installing
 
@@ -125,7 +154,11 @@ $ sudo UV_TOOL_DIR=/var/lib/uv/tools \
     uv tool run --from inky-dashboard playwright install
 ```
 
-This also lets you run the tool as a systemd-managed service:
+Pass the extra you need, e.g. `git+https://github.com/dflemstr/inky-dashboard#egg=inky-dashboard[display]`
+on the Pi (no browser) or `[serve]` on the render host.
+
+This also lets you run the tool as a systemd-managed service.  On the Raspberry Pi, the
+`display` client is tiny (no browser):
 
 ```
 $ cat /etc/systemd/system/inky-dashboard.service
@@ -137,7 +170,7 @@ Wants=network-online.target
 [Service]
 Type=exec
 Environment=UV_TOOL_DIR=/var/lib/uv/tools
-ExecStart=/usr/local/bin/inky-dashboard --wait-selector ha-card --scale 0.72 http://homeassistant.local/dashboard-inky/0
+ExecStart=/usr/local/bin/inky-dashboard display http://homeassistant.local:8080 --saturation 0.0
 Restart=on-failure
 RestartSec=10
 
@@ -146,6 +179,10 @@ WantedBy=multi-user.target
 
 $ sudo systemctl enable --now inky-dashboard.service
 ```
+
+The render side (`serve`) is best packaged as an add-on/container on the render host; the
+`--eval` value contains spaces, so wrap it in double quotes in a unit file, otherwise
+systemd splits it into multiple arguments.
 
 The `--eval` value contains spaces, so wrap it in double quotes in the unit file if you use
 it, otherwise systemd splits it into multiple arguments.

@@ -5,10 +5,27 @@ description = "Render web pages to Pimoroni Inky E-Ink displays"
 readme = "README.md"
 authors = [{ name = "David Flemström", email = "david.flemstrom@gmail.com" }]
 requires-python = ">=3.11"
+# Base install is tiny. Pick the side you need:
+#   serve   — the rendering half (browser); runs on a capable host / HA add-on
+#   display — the panel half (inky); runs on the Raspberry Pi (no browser)
 dependencies = [
-    "inky>=2.4.0",
     "pillow>=12.3.0",
+]
+
+[project.optional-dependencies]
+# serve: the rendering half (browser + HTTP server) — runs on a capable host
+serve = [
     "playwright>=1.61.0",
+    "aiohttp>=3.9",
+]
+# display: the panel half (inky) — runs on the Raspberry Pi, no browser
+display = [
+    "inky>=2.4.0",
+]
+# local: all-in-one on one host (browser + panel, no HTTP server)
+local = [
+    "playwright>=1.61.0",
+    "inky>=2.4.0",
 ]
 
 [project.scripts]
