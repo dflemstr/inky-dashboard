@@ -1,0 +1,39 @@
+name: Inky Dashboard Renderer
+version: "0.1.0"
+slug: inky_dashboard_renderer
+description: >-
+  Renders a Home Assistant dashboard in a headless browser and serves the
+  finished image over HTTP for an Inky e-ink panel (paired with the
+  `inky-dashboard display` client running on the Raspberry Pi).
+url: https://github.com/dflemstr/inky-dashboard
+arch:
+  - aarch64
+init: false
+startup: application
+boot: auto
+# Expose the rendered image to the LAN so the Pi client can fetch it.
+ports:
+  8080/tcp: 8080
+ports_description:
+  8080/tcp: Panel image endpoint (GET /image, GET /hash)
+# Renders over the internal `homeassistant` hostname; no host mounts needed.
+options:
+  url: "http://homeassistant/dashboard-inky/0"
+  width: 1600
+  height: 1200
+  scale: 1.44
+  render_delay: 8
+  wait_selector: "ha-card"
+  eval: "document.querySelector('home-assistant').dispatchEvent(new CustomEvent('hass-dock-sidebar',{detail:{dock:'always_hidden'},bubbles:true,composed:true}))"
+  locale: "en-GB"
+  extra_args: ""
+schema:
+  url: str
+  width: int
+  height: int
+  scale: float
+  render_delay: int
+  wait_selector: str
+  eval: str
+  locale: str
+  extra_args: str
