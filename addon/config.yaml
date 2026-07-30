@@ -1,5 +1,5 @@
 name: Inky Dashboard Renderer
-version: "0.1.4"
+version: "0.1.7"
 slug: inky_dashboard_renderer
 description: >-
   Renders a Home Assistant dashboard in a headless browser and serves the
@@ -24,6 +24,7 @@ options:
   height: 1200
   scale: 1.44
   supersample: 2.0
+  inject_css: ""
   render_delay: 8
   wait_selector: "ha-card"
   eval: "document.querySelector('home-assistant').dispatchEvent(new CustomEvent('hass-dock-sidebar',{detail:{dock:'always_hidden'},bubbles:true,composed:true}))"
@@ -36,6 +37,7 @@ schema:
   height: int
   scale: float
   supersample: float
+  inject_css: str?
   render_delay: int
   wait_selector: str
   eval: str
