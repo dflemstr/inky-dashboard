@@ -47,8 +47,9 @@ $ inky-dashboard serve   https://google.com --width 1600 --height 1200   # on th
 $ inky-dashboard display http://render-host:8080                         # on the Pi
 ```
 
-`serve` exposes `GET /image` (the current PNG, with an `ETag`) and `GET /hash`; the
-`display` client polls `/hash` and only fetches `/image` when it changes.
+`serve` exposes `GET /image` — the current PNG with an `ETag`.  The `display` client
+polls it with a conditional `GET` (`If-None-Match`), so the server replies `304 Not
+Modified` when nothing changed and sends the new image only when it does.
 
 Useful flags (`local`/`serve` share the render flags; `local`/`display` share the panel
 flags):

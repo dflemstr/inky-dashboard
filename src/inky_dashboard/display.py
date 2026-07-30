@@ -46,50 +46,49 @@ def push_frame(display, img, saturation: float):
     display.show()
 
 
-def _fetch(url: str, timeout: float):
-    with urllib.request.urlopen(url, timeout=timeout) as resp:
-        return resp.read()
-
-
 def run(args):
-    # Thin client: no browser. Poll the serve instance's cheap /hash endpoint;
-    # when it changes (and --min-refresh-interval has elapsed), fetch the full
-    # image and draw it on the panel. The color e-ink refresh itself is the slow
-    # part, so the panel is only redrawn when the published image actually
-    # changed. The panel keeps its last image with no power, so a server outage
-    # simply leaves the last good dashboard in place.
+    # Thin client: no browser. Poll the serve instance's image with a conditional
+    # GET (If-None-Match): the server replies 304 when nothing changed (cheap) and
+    # 200 + the new PNG when it did. The panel is redrawn when the latest fetched
+    # image differs from what is on it and --min-refresh-interval has elapsed. The
+    # slow color e-ink refresh is the reason for the debounce; the panel keeps its
+    # last image with no power, so a server outage just leaves the last frame up.
     display = make_display(args.type, args.color)
-    base = args.server_url.rstrip("/")
-    last_etag = None
+    url = args.server_url.rstrip("/") + "/image"
+    seen_etag = None  # ETag of the latest image we have fetched
+    seen_img = None  # the latest fetched image, decoded (may be un-drawn)
+    drawn_etag = None  # ETag of the image currently on the panel
     last_refresh = None
     while True:
+        req = urllib.request.Request(url)
+        if seen_etag is not None:
+            req.add_header("If-None-Match", seen_etag)
         try:
-            etag = _fetch(f"{base}/hash", timeout=10).decode().strip()
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                etag = resp.headers.get("ETag")
+                data = resp.read()
+            img = Image.open(io.BytesIO(data))
+            img.load()
+            seen_etag, seen_img = etag, img
+        except urllib.error.HTTPError as e:
+            if e.code != 304:  # 304 = unchanged, expected and fine
+                print(
+                    f"image poll failed (HTTP {e.code}); keeping last frame",
+                    file=sys.stderr,
+                )
         except (urllib.error.URLError, OSError) as e:
-            print(f"hash poll failed ({e}); keeping last frame", file=sys.stderr)
-            time.sleep(args.poll_delay)
-            continue
+            print(f"image poll failed ({e}); keeping last frame", file=sys.stderr)
 
         now = time.monotonic()
-        if etag and etag != last_etag:
+        if seen_img is not None and seen_etag != drawn_etag:
             rate_ok = (
                 last_refresh is None
                 or (now - last_refresh) >= args.min_refresh_interval
             )
             if rate_ok:
-                try:
-                    data = _fetch(f"{base}/image", timeout=30)
-                    img = Image.open(io.BytesIO(data))
-                    img.load()
-                except (urllib.error.URLError, OSError) as e:
-                    print(
-                        f"image fetch failed ({e}); keeping last frame", file=sys.stderr
-                    )
-                    time.sleep(args.poll_delay)
-                    continue
                 print("refreshing panel", file=sys.stderr)
-                push_frame(display, img, args.saturation)
-                last_etag = etag
+                push_frame(display, seen_img, args.saturation)
+                drawn_etag = seen_etag
                 last_refresh = time.monotonic()
 
         time.sleep(args.poll_delay)
