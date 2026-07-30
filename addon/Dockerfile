@@ -16,6 +16,15 @@ COPY local.conf /etc/fonts/local.conf
 RUN pip install --no-cache-dir "playwright>=1.61.0" "aiohttp>=3.9" "pillow>=12.3.0" \
     && playwright install --with-deps chromium
 
+# Home Assistant's frontend renders in Roboto (with Noto for broad glyph
+# coverage). The slim base + Chromium deps only ship Liberation/DejaVu, so
+# without these the dashboard falls back to a different face. Install them so
+# text renders in the intended font.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-roboto fonts-noto-core \
+    && fc-cache -f \
+    && rm -rf /var/lib/apt/lists/*
+
 # The tool itself. BUILD_VERSION (from config.yaml's version, passed by Supervisor)
 # busts this layer, so bumping the add-on version re-fetches the latest code
 # without rebuilding the browser layer above.
