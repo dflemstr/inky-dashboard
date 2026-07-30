@@ -1,5 +1,5 @@
 name: Inky Dashboard Renderer
-version: "0.1.0"
+version: "0.1.1"
 slug: inky_dashboard_renderer
 description: >-
   Renders a Home Assistant dashboard in a headless browser and serves the

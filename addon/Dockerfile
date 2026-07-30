@@ -11,10 +11,18 @@ RUN apt-get update \
 # edges otherwise dither into speckle on the limited Spectra palette.
 COPY local.conf /etc/fonts/local.conf
 
-# Install the rendering half and a headless Chromium with its system deps.
-RUN pip install --no-cache-dir \
-        "inky-dashboard[serve] @ git+https://github.com/dflemstr/inky-dashboard" \
+# Heavy, code-independent layer: the browser engine and its system deps. Cached
+# across add-on version bumps so re-deploys don't re-download Chromium.
+RUN pip install --no-cache-dir "playwright>=1.61.0" "aiohttp>=3.9" "pillow>=12.3.0" \
     && playwright install --with-deps chromium
+
+# The tool itself. BUILD_VERSION (from config.yaml's version, passed by Supervisor)
+# busts this layer, so bumping the add-on version re-fetches the latest code
+# without rebuilding the browser layer above.
+ARG BUILD_VERSION
+RUN echo "inky-dashboard build ${BUILD_VERSION}" \
+    && pip install --no-cache-dir --no-deps \
+        "inky-dashboard @ git+https://github.com/dflemstr/inky-dashboard"
 
 COPY run.py /run.py
 CMD ["python3", "/run.py"]
