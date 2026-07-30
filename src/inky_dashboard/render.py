@@ -224,7 +224,7 @@ async def run_render(args, publish, width: int, height: int):
         if getattr(args, "init_script", None):
             try:
                 with open(args.init_script) as f:
-                    await page.add_init_script(content=f.read())
+                    await page.add_init_script(script=f.read())
             except OSError as e:
                 print(f"warning: --init-script failed: {e}", file=sys.stderr)
         await load_and_prepare(page, args)
