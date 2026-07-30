@@ -38,6 +38,8 @@ def main():
         cmd += ["--eval", opt["eval"]]
     if opt.get("locale"):
         cmd += ["--locale", opt["locale"]]
+    if opt.get("supersample"):
+        cmd += ["--supersample", str(opt["supersample"])]
 
     # If a long-lived access token is configured, seed it into the frontend's
     # localStorage before the app loads so it starts authenticated (no trusted
