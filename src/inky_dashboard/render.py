@@ -141,6 +141,12 @@ async def render_loop(page: Page, publish, width: int, height: int, args):
     last_publish = None
     fails = 0
     last_reload = time.monotonic()
+    # Track the HA websocket so we can reload the page the moment it reconnects.
+    # A HA core update takes the backend down and back up; reloading on reconnect
+    # re-fetches the (now newer) frontend right away instead of waiting for the
+    # periodic backstop, so version-pinned custom cards recover in seconds.
+    ever_connected = False
+    was_down = False
     while True:
         # Freshness backstop: periodically reload from scratch so the tab picks up
         # a new HA frontend after a core update (see RELOAD_INTERVAL). A failure
@@ -166,6 +172,28 @@ async def render_loop(page: Page, publish, width: int, height: int, args):
             connected = await page.evaluate(HA_CONNECTED_PROBE)
         except Exception:
             connected = None
+
+        # Reload as soon as HA comes back after having been down (a core update):
+        # the reconnected frontend may be a new version, so fetch it fresh.
+        if connected is True and was_down:
+            print("HA reconnected; reloading for a fresh frontend", file=sys.stderr)
+            try:
+                await load_and_prepare(page, args)
+            except Exception as e:
+                print(f"warning: reconnect reload failed: {e}", file=sys.stderr)
+            was_down = False
+            fails = 0
+            last_reload = time.monotonic()
+            await asyncio.sleep(args.poll_delay)
+            continue
+        if connected is True:
+            ever_connected = True
+        elif connected is False and ever_connected:
+            # Genuinely disconnected (the socket exists but reports not-connected,
+            # i.e. the backend went away) after having been up: arm a reload for
+            # when it returns. None (page loading / probe error) is not treated as
+            # a disconnect, so a reload's own loading window can't re-arm this.
+            was_down = True
 
         img = None
         if not content_ok:
