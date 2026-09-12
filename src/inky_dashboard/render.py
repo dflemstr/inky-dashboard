@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import io
+import os
 import sys
 import time
 
@@ -12,6 +13,16 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 # How many times to retry the initial navigation before giving up. A transient
 # network error (e.g. net::ERR_NETWORK_CHANGED) should be ridden out, not fatal.
 GOTO_RETRIES = 3
+
+# Reload the page from scratch this often (seconds), as a freshness backstop.
+# Home Assistant is a PWA: after a core update the backend version changes but a
+# long-lived tab keeps rendering the frontend it loaded at startup, and the
+# version-pinned custom cards (apexcharts, auto-entities, ...) then break while
+# built-ins keep working. Blocking the service worker (see run_render) makes a
+# reload actually fetch the new frontend; this periodic reload guarantees the tab
+# picks up a new frontend within the interval even if nothing else triggers a
+# reload. Override with INKY_RENDER_RELOAD_INTERVAL (0 disables).
+RELOAD_INTERVAL = float(os.environ.get("INKY_RENDER_RELOAD_INTERVAL", str(6 * 3600)))
 
 # JS probe: is Home Assistant's websocket currently connected? True/False when
 # determinable, else None (page still loading, or not a HA page). Used to avoid
@@ -129,7 +140,19 @@ async def render_loop(page: Page, publish, width: int, height: int, args):
     pending_since = None
     last_publish = None
     fails = 0
+    last_reload = time.monotonic()
     while True:
+        # Freshness backstop: periodically reload from scratch so the tab picks up
+        # a new HA frontend after a core update (see RELOAD_INTERVAL). A failure
+        # reload below also resets this timer, so a healthy tab reloads at most
+        # once per interval.
+        if RELOAD_INTERVAL > 0 and (time.monotonic() - last_reload) >= RELOAD_INTERVAL:
+            print("periodic reload (frontend freshness)", file=sys.stderr)
+            try:
+                await load_and_prepare(page, args)
+            except Exception as e:
+                print(f"warning: periodic reload failed: {e}", file=sys.stderr)
+            last_reload = time.monotonic()
         content_ok = True
         if args.wait_selector:
             try:
@@ -167,6 +190,7 @@ async def render_loop(page: Page, publish, width: int, height: int, args):
                 except Exception as e:
                     print(f"warning: reload failed: {e}", file=sys.stderr)
                 fails = 0
+                last_reload = time.monotonic()
             await asyncio.sleep(args.poll_delay)
             continue
         fails = 0
@@ -216,6 +240,13 @@ async def run_render(args, publish, width: int, height: int):
             # --scale (viewport above), --supersample only raises pixel density.
             device_scale_factor=args.scale * args.supersample,
             locale=args.locale,
+            # Block the Home Assistant PWA service worker. Otherwise it precaches
+            # the frontend app shell and keeps serving the *old* frontend after a
+            # HA core update — even across page reloads — until the whole browser
+            # is restarted, which silently breaks version-pinned custom cards. With
+            # it blocked, every (re)load fetches the current frontend from the
+            # network, so the periodic/failure reloads actually recover.
+            service_workers="block",
         )
         page = await context.new_page()
         # Injected before any page script on every navigation — used to seed auth
