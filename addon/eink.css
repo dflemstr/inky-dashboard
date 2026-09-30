@@ -1,0 +1,18 @@
+/* E-ink legibility tweaks, injected into the Home Assistant frontend by the
+ * renderer (run.py passes this via --inject-css). Home Assistant Lovelace cards
+ * live in shadow DOM, which a document-level stylesheet cannot select into --
+ * but CSS custom properties (theme variables) DO inherit across the shadow
+ * boundary, so we tune those rather than element selectors. */
+:root,
+html {
+  /* Grey secondary/disabled text (motion "Clear", tile states, brightness %)
+   * is hard to read on white with only six inks. Darken it toward black. */
+  --secondary-text-color: #333333;
+  --disabled-text-color: #555555;
+
+  /* Soft card shadows/elevations dither into a grey speckle on the Spectra
+   * palette. Flatten them; the layout reads fine without depth cues. */
+  --ha-card-box-shadow: none;
+  --material-shadow-elevation-2dp: none;
+  --material-shadow-elevation-4dp: none;
+}

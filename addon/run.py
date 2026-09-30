@@ -40,8 +40,22 @@ def main():
         cmd += ["--locale", opt["locale"]]
     if opt.get("supersample"):
         cmd += ["--supersample", str(opt["supersample"])]
-    if opt.get("inject_css"):
-        cmd += ["--inject-css", opt["inject_css"]]
+    # --inject-css expects a *file path*. Always inject the baked-in e-ink CSS
+    # (/eink.css, COPYed in by the Dockerfile), and append the inject_css option
+    # (a raw CSS string, since the add-on has no host mounts to point a path at).
+    css_parts = []
+    try:
+        with open("/eink.css") as f:
+            css_parts.append(f.read())
+    except OSError:
+        pass
+    extra_css = opt.get("inject_css", "").strip()
+    if extra_css:
+        css_parts.append(extra_css)
+    if css_parts:
+        with open("/tmp/inject.css", "w") as f:
+            f.write("\n".join(css_parts))
+        cmd += ["--inject-css", "/tmp/inject.css"]
 
     # If a long-lived access token is configured, seed it into the frontend's
     # localStorage before the app loads so it starts authenticated (no trusted

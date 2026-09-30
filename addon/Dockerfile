@@ -33,5 +33,8 @@ RUN echo "inky-dashboard build ${BUILD_VERSION}" \
     && pip install --no-cache-dir --no-deps \
         "inky-dashboard @ git+https://github.com/dflemstr/inky-dashboard"
 
+# Baked-in e-ink CSS, always injected by run.py (a user may add more via the
+# inject_css add-on option, which is appended to this).
+COPY eink.css /eink.css
 COPY run.py /run.py
 CMD ["python3", "/run.py"]
