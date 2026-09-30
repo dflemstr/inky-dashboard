@@ -31,6 +31,13 @@ def main():
         str(opt["render_delay"]),
         "--port",
         "8080",
+        # Fine-grained (sub-hour) power-graph buckets mean the live right-edge bar
+        # changes every poll, so the render never "settles" and only publishes via
+        # this max-staleness force. Keep it short so the first frame after any
+        # restart/reload appears in ~1 min instead of ~5. Steady-state panel
+        # cadence is unaffected (the Pi has its own longer min-refresh).
+        "--refresh-delay",
+        "60",
     ]
     if opt.get("wait_selector"):
         cmd += ["--wait-selector", opt["wait_selector"]]
@@ -81,6 +88,27 @@ def main():
 
     if opt.get("extra_args"):
         cmd += shlex.split(opt["extra_args"])
+
+    # Startup diagnostic: report the installed renderer's freshness safeguards so
+    # a glance at the add-on log confirms which code is deployed (this add-on
+    # pins the tool to a git commit in the Dockerfile).
+    try:
+        import inspect as _inspect
+
+        from inky_dashboard import render as _render
+
+        _src = _inspect.getsource(_render)
+        print(
+            "renderer: reload_interval="
+            + str(getattr(_render, "RELOAD_INTERVAL", "n/a"))
+            + "s service_worker_block="
+            + str('service_workers="block"' in _src)
+            + " reconnect_reload="
+            + str("HA reconnected" in _src),
+            flush=True,
+        )
+    except Exception as _e:  # never block startup on a diagnostic
+        print(f"renderer: self-check failed ({_e})", flush=True)
 
     print("exec: " + " ".join(shlex.quote(c) for c in cmd), flush=True)
     os.execvp(cmd[0], cmd)
