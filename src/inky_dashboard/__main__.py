@@ -189,6 +189,21 @@ def main():
         default=5.0,
         help="How often (seconds) to check the server for a new image.",
     )
+    display.add_argument(
+        "--heartbeat-url",
+        default=None,
+        help="If set, POST a small JSON liveness ping ({host, etag, drawn}) to "
+        "this URL on each successful poll (throttled by --heartbeat-interval). "
+        "Also read from the INKY_HEARTBEAT_URL env var. Point it at a Home "
+        "Assistant webhook to detect a wedged/offline panel.",
+    )
+    display.add_argument(
+        "--heartbeat-interval",
+        type=float,
+        default=None,
+        help="Minimum seconds between liveness heartbeats (default 60; also "
+        "read from INKY_HEARTBEAT_INTERVAL).",
+    )
 
     args = parser.parse_args()
     print(f"running with {vars(args)}", file=sys.stderr)
